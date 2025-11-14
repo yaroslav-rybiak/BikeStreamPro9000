@@ -1,21 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BikeStreamPro9000</title>
+    <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-<h1>BikeStreamPro9000</h1>
-<div id="messages"></div>
+<div class="dashboard">
+    <div class="card">
+        <div class="label">SPEED</div>
+        <div class="value" id="speed">0.0</div>
+        <div class="unit">km/h</div>
+    </div>
 
-<script>
-    const messagesDiv = document.getElementById("messages");
+    <div class="card">
+        <div class="label">CADENCE</div>
+        <div class="value" id="cadence">0</div>
+        <div class="unit">rpm</div>
+    </div>
 
-    const ws = new WebSocket("ws://localhost:3000");
+    <div class="card">
+        <div class="label">PROGRESS</div>
+        <div class="value" id="progress">0.0</div>
+        <div class="unit">km</div>
+    </div>
 
-    ws.onopen = () => {
-        messagesDiv.innerHTML += "<p>Connected to WebSocket server</p>";
-    };
-</script>
+    <div class="card">
+        <div class="label">GOAL</div>
+        <div class="value" id="goal">0</div>
+        <div class="unit">km</div>
+    </div>
+</div>
+
+<div class="buttons">
+    <button class="btn green">+2 km to goal ($2)</button>
+    <button class="btn green">-1 km from progress ($1)</button>
+    <button class="btn green">reset progress ($10)</button>
+    <button class="btn red">end stream ($100)</button>
+</div>
 </body>
 </html>
