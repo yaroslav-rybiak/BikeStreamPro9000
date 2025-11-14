@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>BikeStreamPro9000</title>
+</head>
+<body>
+<h1>BikeStreamPro9000</h1>
+<div id="messages"></div>
+
+<script>
+    const messagesDiv = document.getElementById("messages");
+
+    const ws = new WebSocket("ws://localhost:3000");
+
+    ws.onopen = () => {
+        messagesDiv.innerHTML += "<p>Connected to WebSocket server</p>";
+    };
+</script>
+</body>
+</html>
