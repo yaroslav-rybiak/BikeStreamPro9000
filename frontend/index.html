@@ -3,41 +3,41 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BikeStreamPro9000</title>
+    <title>BikeStreamPro9000 – Dystopia Mode</title>
     <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-<div class="dashboard">
-    <div class="card">
-        <div class="label">SPEED</div>
-        <div class="value" id="speed">0.0</div>
-        <div class="unit">km/h</div>
+<div class="screen">
+    <!-- BIG COUNTER -->
+    <div id="counter" class="counter">90001</div>
+
+    <!-- PENALTY BUTTONS -->
+    <div class="penalty-row">
+        <button class="penalty-btn" data-penalty="100">
+            <span class="penalty-amount">-100</span>
+            <span class="penalty-price">$1</span>
+        </button>
+        <button class="penalty-btn" data-penalty="1000">
+            <span class="penalty-amount">-1000</span>
+            <span class="penalty-price">$5</span>
+        </button>
+        <button class="penalty-btn" data-penalty="9999">
+            <span class="penalty-amount">-9999</span>
+            <span class="penalty-price">$50</span>
+        </button>
     </div>
 
-    <div class="card">
-        <div class="label">CADENCE</div>
-        <div class="value" id="cadence">0</div>
-        <div class="unit">rpm</div>
-    </div>
-
-    <div class="card">
-        <div class="label">PROGRESS</div>
-        <div class="value" id="progress">0.0</div>
-        <div class="unit">km</div>
-    </div>
-
-    <div class="card">
-        <div class="label">GOAL</div>
-        <div class="value" id="goal">0</div>
-        <div class="unit">km</div>
+    <!-- SMALL STATS -->
+    <div class="stats-row">
+        <div class="stat">
+            distance <span id="distance">2.3</span> km
+        </div>
+        <div class="stat">
+            speed <span id="speed">20.1</span> km/h
+        </div>
     </div>
 </div>
 
-<div class="buttons">
-    <button class="btn green">+2 km to goal ($2)</button>
-    <button class="btn green">-1 km from progress ($1)</button>
-    <button class="btn green">reset progress ($10)</button>
-    <button class="btn red">end stream ($100)</button>
-</div>
+<script src="counter.js"></script>
 </body>
 </html>
