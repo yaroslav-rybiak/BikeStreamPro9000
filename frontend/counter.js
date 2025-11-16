@@ -1,6 +1,6 @@
 // DOM references
 const counterEl = document.getElementById("counter");
-const distanceEl = document.getElementById("distance");
+//const distanceEl = document.getElementById("distance");
 const speedEl = document.getElementById("speed");
 
 // Default values (in case WS is not connected yet)
@@ -13,7 +13,7 @@ let state = {
 // Render function
 function render() {
     counterEl.textContent = state.counter.toString();
-    distanceEl.textContent = state.distanceKm.toFixed(1);
+    //distanceEl.textContent = state.distanceKm.toFixed(1);
     speedEl.textContent = state.speedKmh.toFixed(1);
 }
 

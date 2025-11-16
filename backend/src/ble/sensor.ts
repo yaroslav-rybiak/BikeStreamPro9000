@@ -17,6 +17,7 @@ const SPEED_FACTOR = 0.33;
 
 let isConnecting = false;
 let isConnected = false;
+let hasStartedScanHandlers = false;
 
 // --------------------------------------------------------------------
 // Metric broadcast handler (sent to WebSocket clients)
@@ -35,10 +36,20 @@ export function setMetricBroadcast(fn: (msg: any) => void) {
 export function startSensorScan() {
     console.log("🔍 Starting BLE scan for target CYCPLUS…");
 
+    // Prevent attaching duplicate listeners on re-run
+    if (!hasStartedScanHandlers) {
+        setupGlobalBLEHandlers();
+        hasStartedScanHandlers = true;
+    }
+
+    safeStartScan();
+}
+
+function setupGlobalBLEHandlers() {
     noble.on("stateChange", (state) => {
         if (state === "poweredOn") {
-            console.log("Bluetooth ON → scanning for specific UUID…");
-            noble.startScanning([], true);
+            console.log("Bluetooth ON → scanning…");
+            safeStartScan();
         } else {
             noble.stopScanning();
         }
@@ -46,6 +57,7 @@ export function startSensorScan() {
 
     noble.on("discover", (peripheral) => {
         if (peripheral.uuid !== TARGET_UUID) return;
+
         if (isConnecting || isConnected) return;
 
         isConnecting = true;
@@ -54,6 +66,15 @@ export function startSensorScan() {
         noble.stopScanning();
         connectToSensor(peripheral);
     });
+}
+
+// Safe scanning wrapper to avoid spam
+function safeStartScan() {
+    if (isConnecting || isConnected) return;
+
+    try {
+        noble.startScanning([], true);
+    } catch {}
 }
 
 // --------------------------------------------------------------------
@@ -67,6 +88,9 @@ function connectToSensor(peripheral: noble.Peripheral) {
         if (err) {
             console.error("Connection error:", err);
             isConnecting = false;
+
+            // Try scanning again after delay
+            setTimeout(() => safeStartScan(), 1000);
             return;
         }
 
@@ -99,8 +123,19 @@ function connectToSensor(peripheral: noble.Peripheral) {
 
     peripheral.once("disconnect", () => {
         console.log("🔌 Sensor disconnected");
+
         isConnected = false;
         isConnecting = false;
+
+        // DO NOT reset counters.
+        // DO NOT reset lastCrankRevs.
+        // Sensor sleeps and will wake up later.
+
+        console.log("🔎 Waiting 1s then resuming BLE scan…");
+
+        setTimeout(() => {
+            safeStartScan();
+        }, 1000);
     });
 }
 
@@ -123,7 +158,7 @@ let lastPacketTime = Date.now();
 let inactivityTimer: NodeJS.Timeout | null = null;
 const INACTIVITY_MS = 2000;
 
-// Background idle checker (extra safety net)
+// Background idle checker
 setInterval(() => {
     const idleMs = Date.now() - lastPacketTime;
 
@@ -162,7 +197,7 @@ function handleCSCMeasurement(data: Buffer) {
     const crankRevs = data.readUInt16LE(index);
     const crankEvent = data.readUInt16LE(index + 2);
 
-    // First packet: init baseline
+    // First packet after reboot → baseline only
     if (lastCrankRevs === 0 && lastCrankEvent === 0) {
         lastCrankRevs = crankRevs;
         lastCrankEvent = crankEvent;
@@ -181,7 +216,6 @@ function handleCSCMeasurement(data: Buffer) {
     if (deltaRevs <= 0) return;
 
     const deltaTimeSec = deltaTimeRaw / 1024;
-
     const cadenceRpm = (deltaRevs * 60 * 1024) / deltaTimeRaw;
     const speedKmh = cadenceRpm * SPEED_FACTOR;
 
@@ -190,7 +224,7 @@ function handleCSCMeasurement(data: Buffer) {
     const deltaHours = deltaTimeSec / 3600;
     totalDistanceKm += speedKmh * deltaHours;
 
-    // -------- RESET INACTIVITY TIMER --------
+    // RESET INACTIVITY TIMER
     if (inactivityTimer) clearTimeout(inactivityTimer);
 
     inactivityTimer = setTimeout(() => {
