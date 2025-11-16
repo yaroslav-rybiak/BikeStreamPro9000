@@ -1,234 +1,150 @@
 import noble from "@abandonware/noble";
 
-// --------------------------------------------------------------------
-// BLE identifiers
-// --------------------------------------------------------------------
-
 const TARGET_UUID = "2315f21157f95d2a998673c0713cf0c3";
 const CSC_SERVICE = "1816";
 const CSC_MEASUREMENT = "2a5b";
 
-// Simple speed model
-const SPEED_FACTOR = 0.33;
-
-// --------------------------------------------------------------------
-// Connection flags
-// --------------------------------------------------------------------
-
-let isConnecting = false;
-let isConnected = false;
-let hasStartedScanHandlers = false;
-
-// --------------------------------------------------------------------
-// Metric broadcast handler (sent to WebSocket clients)
-// --------------------------------------------------------------------
+const SPEED_FACTOR = 0.33; // simple model: cadence * factor = km/h
 
 let broadcast: ((msg: any) => void) | null = null;
-
 export function setMetricBroadcast(fn: (msg: any) => void) {
     broadcast = fn;
 }
 
-// --------------------------------------------------------------------
-// Start BLE scan
-// --------------------------------------------------------------------
+let isConnecting = false;
+let isConnected = false;
 
 export function startSensorScan() {
-    console.log("🔍 Starting BLE scan for target CYCPLUS…");
+    console.log("🔍 Starting BLE scan…");
 
-    // Prevent attaching duplicate listeners on re-run
-    if (!hasStartedScanHandlers) {
-        setupGlobalBLEHandlers();
-        hasStartedScanHandlers = true;
-    }
-
-    safeStartScan();
-}
-
-function setupGlobalBLEHandlers() {
     noble.on("stateChange", (state) => {
-        if (state === "poweredOn") {
-            console.log("Bluetooth ON → scanning…");
-            safeStartScan();
-        } else {
-            noble.stopScanning();
-        }
+        if (state === "poweredOn") noble.startScanning([], true);
+        else noble.stopScanning();
     });
 
     noble.on("discover", (peripheral) => {
         if (peripheral.uuid !== TARGET_UUID) return;
-
         if (isConnecting || isConnected) return;
 
         isConnecting = true;
-
-        console.log("🎯 Found CYCPLUS sensor:", peripheral.uuid);
+        console.log("🎯 Found sensor:", peripheral.uuid);
         noble.stopScanning();
-        connectToSensor(peripheral);
+        connect(peripheral);
     });
 }
 
-// Safe scanning wrapper to avoid spam
-function safeStartScan() {
-    if (isConnecting || isConnected) return;
-
-    try {
-        noble.startScanning([], true);
-    } catch {}
-}
-
-// --------------------------------------------------------------------
-// Connect + subscribe
-// --------------------------------------------------------------------
-
-function connectToSensor(peripheral: noble.Peripheral) {
-    console.log("🔗 Connecting to sensor...");
+function connect(peripheral: noble.Peripheral) {
+    console.log("🔗 Connecting…");
 
     peripheral.connect((err) => {
         if (err) {
             console.error("Connection error:", err);
             isConnecting = false;
-
-            // Try scanning again after delay
-            setTimeout(() => safeStartScan(), 1000);
             return;
         }
 
         isConnected = true;
-        console.log("✅ Connected to CYCPLUS");
+        console.log("✅ Connected");
 
         peripheral.discoverSomeServicesAndCharacteristics(
             [CSC_SERVICE],
             [CSC_MEASUREMENT],
             (err, services, characteristics) => {
-                if (err) {
-                    console.error("Service discovery error:", err);
-                    return;
-                }
+                const csc = characteristics[0];
+                if (!csc) return console.error("❌ Missing CSC characteristic");
 
-                const cscChar = characteristics[0];
-
-                if (!cscChar) {
-                    console.error("❌ CSC Measurement characteristic NOT FOUND");
-                    return;
-                }
-
-                console.log("📡 Subscribing to CSC measurement…");
-
-                cscChar.on("data", handleCSCMeasurement);
-                cscChar.subscribe();
+                csc.on("data", handleCSCMeasurement);
+                csc.subscribe();
             }
         );
     });
 
     peripheral.once("disconnect", () => {
         console.log("🔌 Sensor disconnected");
-
         isConnected = false;
         isConnecting = false;
 
-        // DO NOT reset counters.
-        // DO NOT reset lastCrankRevs.
-        // Sensor sleeps and will wake up later.
-
-        console.log("🔎 Waiting 1s then resuming BLE scan…");
-
         setTimeout(() => {
-            safeStartScan();
+            console.log("🔎 Resuming scan…");
+            noble.startScanning([], true);
         }, 1000);
     });
 }
 
-// --------------------------------------------------------------------
-// CSC parsing + metrics
-// --------------------------------------------------------------------
-
-let lastCrankRevs = 0;
-let lastCrankEvent = 0;
-
-let totalDistanceKm = 0;
+// --- Speed variables ---
+let lastRevs = 0;
+let lastEvent = 0;
 let currentSpeedKmh = 0;
-
 let lastPacketTime = Date.now();
 
-// --------------------------------------------------------------------
-// Inactivity detection — force speed=0
-// --------------------------------------------------------------------
-
+// --- Inactivity timeout ---
 let inactivityTimer: NodeJS.Timeout | null = null;
-const INACTIVITY_MS = 3000;
+const INACTIVITY_MS = 2000;
 
-// Background idle checker
+// Background safety net (if packet stream stalls weirdly)
 setInterval(() => {
-    const idleMs = Date.now() - lastPacketTime;
+    const idle = Date.now() - lastPacketTime;
 
-    if (idleMs > INACTIVITY_MS && currentSpeedKmh !== 0) {
+    if (idle > INACTIVITY_MS && currentSpeedKmh !== 0) {
         currentSpeedKmh = 0;
-
         if (broadcast) {
             broadcast({
                 type: "metrics",
-                deltaRevs: 0,
-                cadenceRpm: 0,
                 speedKmh: 0,
-                distanceKm: totalDistanceKm,
+                cadenceRpm: 0,
+                deltaRevs: 0
             });
         }
     }
 }, 200);
 
-// --------------------------------------------------------------------
-// Handle CSC Measurement
-// --------------------------------------------------------------------
 
+// -----------------------------------------------------
+// Handle incoming CSC Measurement packets
+// -----------------------------------------------------
 function handleCSCMeasurement(data: Buffer) {
     lastPacketTime = Date.now();
 
     const flags = data.readUInt8(0);
-    let index = 1;
+    let i = 1;
 
-    const hasWheel = (flags & 0x01) !== 0;
-    const hasCrank = (flags & 0x02) !== 0;
+    const hasWheel = !!(flags & 1);
+    const hasCrank = !!(flags & 2);
 
-    if (hasWheel) index += 6; // skip wheel data
-
+    if (hasWheel) i += 6; // skip wheel part
     if (!hasCrank) return;
 
-    const crankRevs = data.readUInt16LE(index);
-    const crankEvent = data.readUInt16LE(index + 2);
+    const crankRevs = data.readUInt16LE(i);
+    const crankEvent = data.readUInt16LE(i + 2); // 1/1024 sec ticks
 
-    // First packet after reboot → baseline only
-    if (lastCrankRevs === 0 && lastCrankEvent === 0) {
-        lastCrankRevs = crankRevs;
-        lastCrankEvent = crankEvent;
+    // Initial packet
+    if (lastRevs === 0 && lastEvent === 0) {
+        lastRevs = crankRevs;
+        lastEvent = crankEvent;
         return;
     }
 
-    let deltaRevs = crankRevs - lastCrankRevs;
-    let deltaTimeRaw = crankEvent - lastCrankEvent;
+    let deltaRevs = crankRevs - lastRevs;
+    let deltaTimeRaw = crankEvent - lastEvent;
 
-    // Timer wrap
+    // wrap
     if (deltaTimeRaw <= 0) deltaTimeRaw += 65536;
 
-    lastCrankRevs = crankRevs;
-    lastCrankEvent = crankEvent;
+    lastRevs = crankRevs;
+    lastEvent = crankEvent;
 
     if (deltaRevs <= 0) return;
 
-    const deltaTimeSec = deltaTimeRaw / 1024;
     const cadenceRpm = (deltaRevs * 60 * 1024) / deltaTimeRaw;
     const speedKmh = cadenceRpm * SPEED_FACTOR;
 
     currentSpeedKmh = speedKmh;
 
-    const deltaHours = deltaTimeSec / 3600;
-    totalDistanceKm += speedKmh * deltaHours;
-
-    // RESET INACTIVITY TIMER
+    // Reset inactivity timer
     if (inactivityTimer) clearTimeout(inactivityTimer);
 
     inactivityTimer = setTimeout(() => {
-        console.log("⛔ No movement → forcing speed=0");
+        console.log("⛔ No movement → speed=0");
         currentSpeedKmh = 0;
 
         if (broadcast) {
@@ -236,25 +152,24 @@ function handleCSCMeasurement(data: Buffer) {
                 type: "metrics",
                 deltaRevs: 0,
                 cadenceRpm: 0,
-                speedKmh: 0,
-                distanceKm: totalDistanceKm,
+                speedKmh: 0
             });
         }
     }, INACTIVITY_MS);
 
+    // DEBUG log
     console.log(
-        `🔄 +${deltaRevs} rev | cadence ${cadenceRpm.toFixed(
+        `🔄 +${deltaRevs} rev | cadence ${cadenceRpm.toFixed(1)} rpm | speed ${speedKmh.toFixed(
             1
-        )} rpm | speed ${speedKmh.toFixed(1)} km/h | dist ${totalDistanceKm.toFixed(3)} km`
+        )} km/h`
     );
 
+    // Send to backend → backend increments counter & forwards speed to client
     if (broadcast) {
         broadcast({
-            type: "metrics",
             deltaRevs,
             cadenceRpm,
-            speedKmh,
-            distanceKm: totalDistanceKm,
+            speedKmh
         });
     }
 }
