@@ -1,7 +1,7 @@
 # Node dependencies
 node_modules/
 
-# Build output (if you compile TS → JS later)
+# Build output
 dist/
 build/
 
@@ -14,8 +14,8 @@ build/
 # TypeScript
 *.tsbuildinfo
 
-# IDE files (WebStorm / JetBrains)
+# IDE files
 .idea/
 
-# Local environment variables (if used later)
+# Local environment variables
 .env
