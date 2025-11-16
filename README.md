@@ -1,23 +1,21 @@
 # BikeStreamPro9000
 
-A tiny local app that connects to a BLE cycling cadence sensor and turns your pedaling into a real-time, stream-friendly visual counter.
-Perfect for Twitch, YouTube, charity rides, pain streams, and dystopian fitness challenges.
+An app that connects to a BLE cycling cadence sensor and turns pedaling into a real-time, stream-friendly visual counter. It also includes three penalty buttons that subtract progress and can be triggered by donations.
 
 ## Features
 ### Real-Time Cadence Tracking
-- Connects automatically to a CYCPLUS / BLE CSC cadence sensor
+- Connects to a CYCPLUS cadence sensor
 - Reads crank revolutions in real time
-- Handles disconnects + reconnects seamlessly
-- No manual pairing needed — just start pedaling
+- Handles sensor sleep/wake cycle seamlessly
 
 ### Stream-Ready Dashboard
-- High-contrast fullscreen UI designed for OBS/Streamlabs crops
+- High-contrast UI designed for OBS crop
 - Huge live pedal revolution counter
-- Three penalty buttons (e.g., chat redemptions, donation triggers)
-- Dramatic screen shake + blood-red flash on penalties
+- Three penalty buttons (-100, -1000, -9999)
+- Dramatic screen shake and blood-red flash on penalties
 
 ### Persistent Progress
-- Pedal counter is saved to state.json
+- Pedal counter is saved to state.json, DB-free design
 - Survives:
   - page refresh
   - backend restart
