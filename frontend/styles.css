@@ -38,11 +38,8 @@ body {
 
 /* COUNTER LABEL */
 .counter-label {
-    margin-bottom: 24px;
+    margin-bottom: 22px;
     font-size: 1.4rem;
-    color: #b3b3b3;
-    opacity: 0.8;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace;
 }
 
 /* PENALTY BUTTONS */
