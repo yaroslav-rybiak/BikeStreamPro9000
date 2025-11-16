@@ -20,12 +20,12 @@ export function loadState() {
         if (fs.existsSync(STATE_FILE)) {
             const raw = fs.readFileSync(STATE_FILE, "utf8");
             state = JSON.parse(raw);
-            console.log("📁 Loaded state:", state);
+            console.log("Loaded state:", state);
         } else {
-            console.log("📁 No state file found — starting fresh.");
+            console.log("No state file found — starting fresh.");
         }
     } catch (e) {
-        console.error("⚠️ Failed to load state file, using defaults.", e);
+        console.error("Failed to load state file, using defaults.", e);
     }
 }
 
@@ -34,7 +34,7 @@ export function saveState() {
     try {
         fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), "utf8");
     } catch (e) {
-        console.error("⚠️ Failed to save state!", e);
+        console.error("Failed to save state!", e);
     }
 }
 

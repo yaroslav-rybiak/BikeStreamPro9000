@@ -17,7 +17,7 @@ let isConnected = false;
 // Start scanning for BLE device
 // --------------------------------------------------------------------
 export function startSensorScan() {
-    console.log("🔍 Starting BLE scan…");
+    console.log("Starting BLE scan…");
 
     noble.on("stateChange", (state) => {
         if (state === "poweredOn") noble.startScanning([], true);
@@ -29,7 +29,7 @@ export function startSensorScan() {
         if (isConnecting || isConnected) return;
 
         isConnecting = true;
-        console.log("🎯 Found sensor:", peripheral.uuid);
+        console.log("Found sensor:", peripheral.uuid);
         noble.stopScanning();
         connect(peripheral);
     });
@@ -39,7 +39,7 @@ export function startSensorScan() {
 // Connect and subscribe
 // --------------------------------------------------------------------
 function connect(peripheral: noble.Peripheral) {
-    console.log("🔗 Connecting…");
+    console.log("Connecting…");
 
     peripheral.connect((err) => {
         if (err) {
@@ -49,14 +49,14 @@ function connect(peripheral: noble.Peripheral) {
         }
 
         isConnected = true;
-        console.log("✅ Connected");
+        console.log("Connected");
 
         peripheral.discoverSomeServicesAndCharacteristics(
             [CSC_SERVICE],
             [CSC_MEASUREMENT],
             (_err, _services, chars) => {
                 const csc = chars[0];
-                if (!csc) return console.error("❌ Missing CSC characteristic");
+                if (!csc) return console.error("Missing CSC characteristic");
 
                 csc.on("data", handleCSCMeasurement);
                 csc.subscribe();
@@ -65,13 +65,13 @@ function connect(peripheral: noble.Peripheral) {
     });
 
     peripheral.once("disconnect", () => {
-        console.log("🔌 Sensor disconnected");
+        console.log("Sensor disconnected");
         isConnected = false;
         isConnecting = false;
 
         // Restart scan after 1s
         setTimeout(() => {
-            console.log("🔎 Resuming BLE scan…");
+            console.log("Resuming BLE scan…");
             noble.startScanning([], true);
         }, 1000);
     });
@@ -114,12 +114,10 @@ function handleCSCMeasurement(data: Buffer) {
 
     if (deltaRevs <= 0) return;
 
-    // Cadence RPM
     const cadenceRpm = (deltaRevs * 60 * 1024) / deltaTimeRaw;
 
-    console.log(`🔄 +${deltaRevs} rev | cadence ${cadenceRpm.toFixed(1)} rpm`);
+    console.log(`+${deltaRevs} rev | cadence ${cadenceRpm.toFixed(1)} rpm`);
 
-    // Emit only revolutions + cadence
     if (broadcast) {
         broadcast({
             deltaRevs,
