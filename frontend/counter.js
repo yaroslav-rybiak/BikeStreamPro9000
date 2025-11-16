@@ -5,7 +5,7 @@ const speedEl = document.getElementById("speed");
 
 // Default values (in case WS is not connected yet)
 let state = {
-    counter: 96000,
+    counter: 96600,
     distanceKm: 1.0,
     speedKmh: 0.0,
 };
@@ -66,12 +66,18 @@ try {
 }
 
 // --- Optional: button clicks (for manual testing) ---
-// These just adjust the counter locally; later you can send them to backend.
 document.querySelectorAll(".penalty-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
         const penalty = Number(btn.dataset.penalty || "0");
         state.counter = Math.max(0, state.counter - penalty);
         render();
-        // Later: ws.send(JSON.stringify({ type: "penalty", amount: penalty }));
+
+        // 🔥 Medium shake + blood-red flash
+        document.body.classList.add("shake", "flash");
+        setTimeout(() => {
+            document.body.classList.remove("shake", "flash");
+        }, 250); // medium duration
     });
+
+
 });

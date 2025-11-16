@@ -34,6 +34,7 @@ body {
     font-size: 8rem;
     font-weight: 400;
     letter-spacing: 0.05em;
+    #margin-top: -80px;
     margin-bottom: -10px;
 }
 
@@ -110,5 +111,42 @@ body {
 
 .stat span {
     padding-left: 0.3em;
+}
+
+/* ============================
+   SCREEN SHAKE
+   ============================ */
+.shake {
+    animation: screenShake 120ms ease-in-out;
+}
+
+@keyframes screenShake {
+    0% { transform: translateX(0); }
+    20% { transform: translateX(-8px); }
+    40% { transform: translateX(8px); }
+    60% { transform: translateX(-6px); }
+    80% { transform: translateX(6px); }
+    100% { transform: translateX(0); }
+}
+
+/* ============================
+   BLOOD-RED FLASH
+   ============================ */
+.flash::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(140, 0, 0, 0.65); /* dark blood-red */
+    pointer-events: none;
+    animation: flashFade 180ms ease-out forwards;
+    z-index: 9999;
+}
+
+@keyframes flashFade {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
 }
 
