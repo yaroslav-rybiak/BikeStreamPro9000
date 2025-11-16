@@ -1,27 +1,35 @@
 import noble from "@abandonware/noble";
 
+// BLE identifiers for cadence-only CYCPLUS sensor
 const TARGET_UUID = "2315f21157f95d2a998673c0713cf0c3";
 const CSC_SERVICE = "1816";
 const CSC_MEASUREMENT = "2a5b";
 
-// Broadcast handler (sends metrics to backend)
+// Callback for broadcasting data to backend
 let broadcast: ((msg: any) => void) | null = null;
 export function setMetricBroadcast(fn: (msg: any) => void) {
     broadcast = fn;
 }
 
+// Connection state flags
 let isConnecting = false;
 let isConnected = false;
 
-// --------------------------------------------------------------------
-// Start scanning for BLE device
-// --------------------------------------------------------------------
+// Marks that next measurement is first after reconnect
+let justReconnected = false;
+
+// ------------------------------------------------------------
+// Start BLE scanning
+// ------------------------------------------------------------
 export function startSensorScan() {
     console.log("Starting BLE scan…");
 
     noble.on("stateChange", (state) => {
-        if (state === "poweredOn") noble.startScanning([], true);
-        else noble.stopScanning();
+        if (state === "poweredOn") {
+            noble.startScanning([], true);
+        } else {
+            noble.stopScanning();
+        }
     });
 
     noble.on("discover", (peripheral) => {
@@ -30,14 +38,15 @@ export function startSensorScan() {
 
         isConnecting = true;
         console.log("Found sensor:", peripheral.uuid);
+
         noble.stopScanning();
         connect(peripheral);
     });
 }
 
-// --------------------------------------------------------------------
-// Connect and subscribe
-// --------------------------------------------------------------------
+// ------------------------------------------------------------
+// Connect and subscribe to CSC measurement
+// ------------------------------------------------------------
 function connect(peripheral: noble.Peripheral) {
     console.log("Connecting…");
 
@@ -49,6 +58,8 @@ function connect(peripheral: noble.Peripheral) {
         }
 
         isConnected = true;
+        justReconnected = true; // important
+
         console.log("Connected");
 
         peripheral.discoverSomeServicesAndCharacteristics(
@@ -56,7 +67,10 @@ function connect(peripheral: noble.Peripheral) {
             [CSC_MEASUREMENT],
             (_err, _services, chars) => {
                 const csc = chars[0];
-                if (!csc) return console.error("Missing CSC characteristic");
+                if (!csc) {
+                    console.error("Missing CSC characteristic");
+                    return;
+                }
 
                 csc.on("data", handleCSCMeasurement);
                 csc.subscribe();
@@ -66,57 +80,72 @@ function connect(peripheral: noble.Peripheral) {
 
     peripheral.once("disconnect", () => {
         console.log("Sensor disconnected");
+
         isConnected = false;
         isConnecting = false;
 
-        // Restart scan after 1s
         setTimeout(() => {
             console.log("Resuming BLE scan…");
             noble.startScanning([], true);
-        }, 1000);
+        }, 200);
     });
 }
 
-// --------------------------------------------------------------------
-// CSC Parsing (cadence only)
-// --------------------------------------------------------------------
+// ------------------------------------------------------------
+// CSC Parsing – crank-only mode
+// ------------------------------------------------------------
 let lastRevs = 0;
 let lastEvent = 0;
 
 function handleCSCMeasurement(data: Buffer) {
-    const flags = data.readUInt8(0);
-    let i = 1;
+    const crankRevs = data.readUInt16LE(1);
+    const crankEvent = data.readUInt16LE(3);
 
-    const hasWheel = !!(flags & 1);
-    const hasCrank = !!(flags & 2);
-
-    if (hasWheel) i += 6;
-    if (!hasCrank) return;
-
-    const crankRevs = data.readUInt16LE(i);
-    const crankEvent = data.readUInt16LE(i + 2);
-
-    // First packet → initialize state
+    // First packet EVER → just initialize
     if (lastRevs === 0 && lastEvent === 0) {
         lastRevs = crankRevs;
         lastEvent = crankEvent;
         return;
     }
 
-    // Compute deltas
     let deltaRevs = crankRevs - lastRevs;
-    let deltaTimeRaw = crankEvent - lastEvent;
+    let deltaTime = crankEvent - lastEvent;
 
-    if (deltaTimeRaw <= 0) deltaTimeRaw += 65536;
+    // Fix wraparound
+    if (deltaTime <= 0) deltaTime += 65536;
+
+    // ------------------------------------------------------------
+    // Handle reconnection logic
+    // ------------------------------------------------------------
+    if (justReconnected) {
+        justReconnected = false;
+
+        if (crankRevs >= lastRevs) {
+            // No sensor reset, but we missed some revolutions
+            deltaRevs = crankRevs - lastRevs;
+            console.log(
+                `Reconnected: catch-up +${deltaRevs} (from ${lastRevs} → ${crankRevs})`
+            );
+        } else {
+            // Sensor reset after sleep
+            deltaRevs = crankRevs;
+            console.log(
+                `Sensor reset detected: +${deltaRevs} (total restarted at ${crankRevs})`
+            );
+        }
+    } else {
+        // Normal operation: ignore negatives
+        if (deltaRevs <= 0) return;
+    }
 
     lastRevs = crankRevs;
     lastEvent = crankEvent;
 
-    if (deltaRevs <= 0) return;
+    const cadenceRpm = (deltaRevs * 60 * 1024) / deltaTime;
 
-    const cadenceRpm = (deltaRevs * 60 * 1024) / deltaTimeRaw;
-
-    console.log(`+${deltaRevs} rev | cadence ${cadenceRpm.toFixed(1)} rpm`);
+    console.log(
+        `+${deltaRevs} rev | total=${crankRevs} | cadence ${cadenceRpm.toFixed(1)} rpm`
+    );
 
     if (broadcast) {
         broadcast({
