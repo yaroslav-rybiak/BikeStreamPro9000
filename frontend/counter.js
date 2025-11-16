@@ -5,8 +5,8 @@ const speedEl = document.getElementById("speed");
 
 // Default values (in case WS is not connected yet)
 let state = {
-    counter: 95000,
-    distanceKm: 0.0,
+    counter: 96000,
+    distanceKm: 1.0,
     speedKmh: 0.0,
 };
 
@@ -34,14 +34,25 @@ try {
         try {
             const msg = JSON.parse(event.data);
 
-            // Expect messages like:
-            // { type: "state", counter: 90001, distanceKm: 2.3, speedKmh: 20.1 }
+            // NEW CASE: BLE metrics updates
+            if (msg.type === "metrics") {
+                state.distanceKm = msg.distanceKm;
+                state.speedKmh = msg.speedKmh;
+
+                // Increase counter based on revolutions
+                state.counter += msg.deltaRevs;
+
+                render();
+            }
+
+            // OLD CASE: server initial state (optional)
             if (msg.type === "state") {
                 state.counter = msg.counter ?? state.counter;
                 state.distanceKm = msg.distanceKm ?? state.distanceKm;
                 state.speedKmh = msg.speedKmh ?? state.speedKmh;
                 render();
             }
+
         } catch (e) {
             console.error("Bad WS message:", event.data);
         }
