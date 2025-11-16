@@ -156,7 +156,7 @@ let lastPacketTime = Date.now();
 // --------------------------------------------------------------------
 
 let inactivityTimer: NodeJS.Timeout | null = null;
-const INACTIVITY_MS = 2000;
+const INACTIVITY_MS = 3000;
 
 // Background idle checker
 setInterval(() => {
