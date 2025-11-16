@@ -4,8 +4,7 @@ const TARGET_UUID = "2315f21157f95d2a998673c0713cf0c3";
 const CSC_SERVICE = "1816";
 const CSC_MEASUREMENT = "2a5b";
 
-const SPEED_FACTOR = 0.33; // simple model: cadence * factor = km/h
-
+// Broadcast handler (sends metrics to backend)
 let broadcast: ((msg: any) => void) | null = null;
 export function setMetricBroadcast(fn: (msg: any) => void) {
     broadcast = fn;
@@ -14,6 +13,9 @@ export function setMetricBroadcast(fn: (msg: any) => void) {
 let isConnecting = false;
 let isConnected = false;
 
+// --------------------------------------------------------------------
+// Start scanning for BLE device
+// --------------------------------------------------------------------
 export function startSensorScan() {
     console.log("🔍 Starting BLE scan…");
 
@@ -33,6 +35,9 @@ export function startSensorScan() {
     });
 }
 
+// --------------------------------------------------------------------
+// Connect and subscribe
+// --------------------------------------------------------------------
 function connect(peripheral: noble.Peripheral) {
     console.log("🔗 Connecting…");
 
@@ -49,8 +54,8 @@ function connect(peripheral: noble.Peripheral) {
         peripheral.discoverSomeServicesAndCharacteristics(
             [CSC_SERVICE],
             [CSC_MEASUREMENT],
-            (err, services, characteristics) => {
-                const csc = characteristics[0];
+            (_err, _services, chars) => {
+                const csc = chars[0];
                 if (!csc) return console.error("❌ Missing CSC characteristic");
 
                 csc.on("data", handleCSCMeasurement);
@@ -64,70 +69,44 @@ function connect(peripheral: noble.Peripheral) {
         isConnected = false;
         isConnecting = false;
 
+        // Restart scan after 1s
         setTimeout(() => {
-            console.log("🔎 Resuming scan…");
+            console.log("🔎 Resuming BLE scan…");
             noble.startScanning([], true);
         }, 1000);
     });
 }
 
-// --- Speed variables ---
+// --------------------------------------------------------------------
+// CSC Parsing (cadence only)
+// --------------------------------------------------------------------
 let lastRevs = 0;
 let lastEvent = 0;
-let currentSpeedKmh = 0;
-let lastPacketTime = Date.now();
 
-// --- Inactivity timeout ---
-let inactivityTimer: NodeJS.Timeout | null = null;
-const INACTIVITY_MS = 2000;
-
-// Background safety net (if packet stream stalls weirdly)
-setInterval(() => {
-    const idle = Date.now() - lastPacketTime;
-
-    if (idle > INACTIVITY_MS && currentSpeedKmh !== 0) {
-        currentSpeedKmh = 0;
-        if (broadcast) {
-            broadcast({
-                type: "metrics",
-                speedKmh: 0,
-                cadenceRpm: 0,
-                deltaRevs: 0
-            });
-        }
-    }
-}, 200);
-
-
-// -----------------------------------------------------
-// Handle incoming CSC Measurement packets
-// -----------------------------------------------------
 function handleCSCMeasurement(data: Buffer) {
-    lastPacketTime = Date.now();
-
     const flags = data.readUInt8(0);
     let i = 1;
 
     const hasWheel = !!(flags & 1);
     const hasCrank = !!(flags & 2);
 
-    if (hasWheel) i += 6; // skip wheel part
+    if (hasWheel) i += 6;
     if (!hasCrank) return;
 
     const crankRevs = data.readUInt16LE(i);
-    const crankEvent = data.readUInt16LE(i + 2); // 1/1024 sec ticks
+    const crankEvent = data.readUInt16LE(i + 2);
 
-    // Initial packet
+    // First packet → initialize state
     if (lastRevs === 0 && lastEvent === 0) {
         lastRevs = crankRevs;
         lastEvent = crankEvent;
         return;
     }
 
+    // Compute deltas
     let deltaRevs = crankRevs - lastRevs;
     let deltaTimeRaw = crankEvent - lastEvent;
 
-    // wrap
     if (deltaTimeRaw <= 0) deltaTimeRaw += 65536;
 
     lastRevs = crankRevs;
@@ -135,41 +114,16 @@ function handleCSCMeasurement(data: Buffer) {
 
     if (deltaRevs <= 0) return;
 
+    // Cadence RPM
     const cadenceRpm = (deltaRevs * 60 * 1024) / deltaTimeRaw;
-    const speedKmh = cadenceRpm * SPEED_FACTOR;
 
-    currentSpeedKmh = speedKmh;
+    console.log(`🔄 +${deltaRevs} rev | cadence ${cadenceRpm.toFixed(1)} rpm`);
 
-    // Reset inactivity timer
-    if (inactivityTimer) clearTimeout(inactivityTimer);
-
-    inactivityTimer = setTimeout(() => {
-        console.log("⛔ No movement → speed=0");
-        currentSpeedKmh = 0;
-
-        if (broadcast) {
-            broadcast({
-                type: "metrics",
-                deltaRevs: 0,
-                cadenceRpm: 0,
-                speedKmh: 0
-            });
-        }
-    }, INACTIVITY_MS);
-
-    // DEBUG log
-    console.log(
-        `🔄 +${deltaRevs} rev | cadence ${cadenceRpm.toFixed(1)} rpm | speed ${speedKmh.toFixed(
-            1
-        )} km/h`
-    );
-
-    // Send to backend → backend increments counter & forwards speed to client
+    // Emit only revolutions + cadence
     if (broadcast) {
         broadcast({
             deltaRevs,
-            cadenceRpm,
-            speedKmh
+            cadenceRpm
         });
     }
 }

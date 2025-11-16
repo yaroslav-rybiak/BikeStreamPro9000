@@ -3,7 +3,7 @@ import WebSocket, { WebSocketServer } from "ws";
 import path from "path";
 
 import { startSensorScan, setMetricBroadcast } from "./ble/sensor";
-import { loadState, getCounter, incrementCounter, setCounter } from "./state";
+import { loadState, getCounter, incrementCounter } from "./state";
 
 const app = express();
 const port = 3000;
@@ -27,7 +27,7 @@ wss.on("connection", (ws) => {
     console.log("Client connected");
     clients.add(ws);
 
-    // Immediately send current state
+    // Immediately send current counter
     ws.send(JSON.stringify({
         type: "state",
         counter: getCounter()
@@ -40,7 +40,6 @@ wss.on("connection", (ws) => {
             if (msg.type === "penalty") {
                 incrementCounter(-msg.amount);
 
-                // broadcast new state
                 const payload = JSON.stringify({
                     type: "state",
                     counter: getCounter()
@@ -62,39 +61,23 @@ wss.on("connection", (ws) => {
 
 // BLE → increments counter
 setMetricBroadcast((metrics) => {
-    const { deltaRevs, speedKmh, cadenceRpm, distanceKm } = metrics;
+    const { deltaRevs } = metrics;
 
-    // --- 1) COUNTER UPDATE ---
     if (deltaRevs > 0) {
         incrementCounter(deltaRevs);
 
-        const stateMsg = JSON.stringify({
+        const msg = JSON.stringify({
             type: "state",
             counter: getCounter()
         });
 
         for (const client of clients) {
             if (client.readyState === WebSocket.OPEN) {
-                client.send(stateMsg);
+                client.send(msg);
             }
         }
     }
-
-    // --- 2) REAL-TIME METRICS (speed, cadence, distance) ---
-    const metricsMsg = JSON.stringify({
-        type: "metrics",
-        speedKmh,
-        cadenceRpm,
-        distanceKm
-    });
-
-    for (const client of clients) {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(metricsMsg);
-        }
-    }
 });
-
 
 // Start BLE scanning
 startSensorScan();

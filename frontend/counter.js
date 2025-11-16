@@ -1,14 +1,11 @@
 const counterEl = document.getElementById("counter");
-const speedEl = document.getElementById("speed");
 
 let state = {
-    counter: 0,
-    speed: 0
+    counter: 0
 };
 
 function render() {
     counterEl.textContent = state.counter.toString();
-    speedEl.textContent = state.speed.toFixed(1);
 }
 
 render();
@@ -22,11 +19,6 @@ ws.onmessage = (event) => {
         state.counter = msg.counter;
         render();
     }
-
-    if (msg.type === "metrics") {
-        state.speed = msg.speedKmh || 0;
-        render();
-    }
 };
 
 document.querySelectorAll(".penalty-btn").forEach((btn) => {
@@ -38,7 +30,7 @@ document.querySelectorAll(".penalty-btn").forEach((btn) => {
             amount
         }));
 
-        // Shake + flash
+        // Shake + flash animation
         document.body.classList.add("shake", "flash");
         setTimeout(() => {
             document.body.classList.remove("shake", "flash");
