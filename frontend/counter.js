@@ -5,8 +5,10 @@ let state = {
 };
 
 function render() {
-    counterEl.textContent = state.counter.toString();
+    const padded = state.counter.toString().padStart(5, "0");
+    counterEl.textContent = padded;
 }
+
 
 render();
 
